@@ -78,6 +78,13 @@ var playCmd = &cobra.Command{
 		<-t.GotInfo()
 		t.DownloadAll()
 
+		largestFile := getLargestFile(t)
+		firstPieceIndex := largestFile.Offset() * int64(t.NumPieces()) / t.Length()
+		endPieceIndex := (largestFile.Offset() + largestFile.Length()) * int64(t.NumPieces()) / t.Length()
+		for idx := firstPieceIndex; idx <= endPieceIndex*5/100; idx++ {
+			t.Piece(int(idx)).SetPriority(torrent.PiecePriorityNow)
+		}
+
 		largestFilePath := filepath.Join(dataDir, getLargestFile(t).Path())
 
 		// http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -87,8 +94,21 @@ var playCmd = &cobra.Command{
 		var wg sync.WaitGroup
 		wg.Add(1)
 
+		for percentage(t) < 5 {
+			time.Sleep(200 * time.Millisecond)
+			fmt.Print("\033[H\033[2J") // clear screen
+			fmt.Println("File location: ", largestFilePath)
+			fmt.Println("Torrent name", t.Name())
+			fmt.Println("Download progress", percentage(t), "%")
+			fmt.Println("Peers", len(t.PeerConns()))
+			fmt.Println("Opening mpv when 5% is downloaded")
+		}
+
 		go func() {
-			exec.Command("mpv", largestFilePath).Run()
+			err := exec.Command("mpv", largestFilePath).Run()
+			if err != nil {
+				panic(err)
+			}
 			wg.Done()
 		}()
 
@@ -100,6 +120,7 @@ var playCmd = &cobra.Command{
 			fmt.Println("Torrent name", t.Name())
 			fmt.Println("Download progress", percentage(t), "%")
 			fmt.Println("Peers", len(t.PeerConns()))
+			fmt.Println("Playing using mpv")
 			i++
 		}
 
